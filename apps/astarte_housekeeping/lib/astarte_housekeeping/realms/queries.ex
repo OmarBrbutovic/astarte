@@ -247,7 +247,7 @@ defmodule Astarte.Housekeeping.Realms.Queries do
            :ok <- insert_realm_public_key(keyspace_conn, public_key_pem),
            :ok <- insert_realm_astarte_schema_version(keyspace_conn),
            :ok <- insert_realm(conn, realm_name, device_limit),
-           :ok <- insert_datastream_max_retention(keyspace_conn, max_retention) do
+           :ok <- set_datastream_maximum_storage_retention(realm_name, max_retention) do
         :ok
       else
         {:error, %Xandra.Error{} = err} ->
@@ -380,39 +380,6 @@ defmodule Astarte.Housekeeping.Realms.Queries do
           )
 
         {:error, reason}
-    end
-  end
-
-  # ScyllaDB considers TTL=0 as unset, see
-  # https://opensource.docs.scylladb.com/stable/cql/time-to-live.html#notes
-  defp insert_datastream_max_retention(_conn_realm, 0) do
-    :ok
-  end
-
-  # apparently, before when the field was nil, it was encoded as zero (not optional on protobuff), so treat it the same as zero
-  defp insert_datastream_max_retention(_conn_realm, nil) do
-    :ok
-  end
-
-  defp insert_datastream_max_retention({conn, keyspace_name}, max_retention) do
-    statement = """
-    INSERT INTO :keyspace_name.kv_store (group, key, value)
-    VALUES ('realm_config', 'datastream_maximum_storage_retention', intAsBlob(:max_retention));
-    """
-
-    params = %{
-      "max_retention" => max_retention
-    }
-
-    # This is safe since we checked the realm name in the caller
-    query = String.replace(statement, ":keyspace_name", keyspace_name)
-
-    consistency = Consistency.domain_model(:write)
-
-    with {:ok, prepared} <- Xandra.prepare(conn, query),
-         {:ok, %Xandra.Void{}} <-
-           Xandra.execute(conn, prepared, params, consistency: consistency) do
-      :ok
     end
   end
 
